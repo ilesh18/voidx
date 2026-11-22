@@ -15,6 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      signed: ${{ steps.signing-status.outputs.signed }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -52,50 +54,76 @@ jobs:
         working-directory: apps/mobile
         run: flutter test
 
-      - name: Create production .env from secrets
-        if: ${{ secrets.BACKEND_URL != '' }}
-        working-directory: apps/mobile
+      - name: Detect signing availability
+        id: signing-status
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
-          cat > .env <<EOF
-          APP_ENV=production
-          BACKEND_URL=${{ secrets.BACKEND_URL }}
-          WEATHERAPI_API_KEY=${{ secrets.WEATHERAPI_API_KEY }}
-          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-          GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
-          DTN_CLIENT_ID=${{ secrets.DTN_CLIENT_ID }}
-          DTN_CLIENT_SECRET=${{ secrets.DTN_CLIENT_SECRET }}
-          DTN_BASE_URL=${{ secrets.DTN_BASE_URL }}
-          DTN_AUTH_URL=${{ secrets.DTN_AUTH_URL }}
-          NOVU_API_KEY=${{ secrets.NOVU_API_KEY }}
-          TWILIO_ACCOUNT=${{ secrets.TWILIO_ACCOUNT }}
-          EOF
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create production .env from secrets
+        working-directory: apps/mobile
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          WEATHERAPI_API_KEY: ${{ secrets.WEATHERAPI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          DTN_CLIENT_ID: ${{ secrets.DTN_CLIENT_ID }}
+          DTN_CLIENT_SECRET: ${{ secrets.DTN_CLIENT_SECRET }}
+          DTN_BASE_URL: ${{ secrets.DTN_BASE_URL }}
+          DTN_AUTH_URL: ${{ secrets.DTN_AUTH_URL }}
+          NOVU_API_KEY: ${{ secrets.NOVU_API_KEY }}
+          TWILIO_ACCOUNT: ${{ secrets.TWILIO_ACCOUNT }}
+        run: |
+          if [ -n "$BACKEND_URL" ]; then
+            cat > .env <<EOF
+            APP_ENV=production
+            BACKEND_URL=$BACKEND_URL
+            WEATHERAPI_API_KEY=$WEATHERAPI_API_KEY
+            GEMINI_API_KEY=$GEMINI_API_KEY
+            GOOGLE_MAPS_API_KEY=$GOOGLE_MAPS_API_KEY
+            DTN_CLIENT_ID=$DTN_CLIENT_ID
+            DTN_CLIENT_SECRET=$DTN_CLIENT_SECRET
+            DTN_BASE_URL=$DTN_BASE_URL
+            DTN_AUTH_URL=$DTN_AUTH_URL
+            NOVU_API_KEY=$NOVU_API_KEY
+            TWILIO_ACCOUNT=$TWILIO_ACCOUNT
+            EOF
+          else
+            echo "::warning::BACKEND_URL secret not configured; using development default (no production build)."
+          fi
 
       - name: Configure release signing keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
         working-directory: apps/mobile
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/cyclonex-release-key.jks
-          cat > android/app/key.properties <<EOF
-          storeFile=cyclonex-release-key.jks
-          storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
-          EOF
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > android/app/cyclonex-release-key.jks
+            cat > android/app/key.properties <<EOF
+            storeFile=cyclonex-release-key.jks
+            storePassword=$STORE_PASSWORD
+            keyAlias=$KEY_ALIAS
+            keyPassword=$KEY_PASSWORD
+            EOF
+          else
+            echo "::notice::No signing keystore configured; producing unsigned testing APK only (not a production release)."
+          fi
 
-      - name: Build signed release APK
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      - name: Build release APK
         working-directory: apps/mobile
         run: flutter build apk --release
 
-      - name: Build signed release AAB
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      - name: Build release AAB
         working-directory: apps/mobile
         run: flutter build appbundle --release
-
-      - name: Build unsigned release APK (testing only)
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' }}
-        working-directory: apps/mobile
-        run: flutter build apk --release
 
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
@@ -116,7 +144,7 @@ jobs:
     needs: build
     if: >
       startsWith(github.ref, 'refs/tags/v') &&
-      secrets.ANDROID_KEYSTORE_BASE64 != ''
+      needs.build.outputs.signed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
