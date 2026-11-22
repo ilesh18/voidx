@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:js' as js;
+import 'js_interop.dart';
 import 'package:flutter_config/flutter_config.dart';
 import 'package:telephony/telephony.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -68,7 +68,7 @@ class SOSButton extends StatelessWidget {
 
   void _onSOSPressed(BuildContext context) {
     try {
-      js.context.callMethod('setFlutterInteractive', [true]);
+      jsCall('setFlutterInteractive', [true]);
     } catch (_) {}
 
     showModalBottomSheet(
@@ -150,21 +150,21 @@ class _HomeState extends State<Home> {
 
   void _registerJsCallbacks() {
     try {
-      js.context['flutterOpenDrawer'] = () {
+      jsSet('flutterOpenDrawer', () {
         _showAssistanceDrawer();
-      };
-      js.context['flutterSOS'] = () {
+      });
+      jsSet('flutterSOS', () {
         if (!isHelping) {
           SOSButton(isHelping: isHelping)._onSOSPressed(context);
         }
-      };
-      js.context['flutterRecenter'] = () {
-        js.context.callMethod('updateWindyLocation', [currentLat, currentLng]);
-      };
-      js.context['flutterAction'] = () {
+      });
+      jsSet('flutterRecenter', () {
+        jsCall('updateWindyLocation', [currentLat, currentLng]);
+      });
+      jsSet('flutterAction', () {
         actionButtonClickFn();
-      };
-      js.context.callMethod('setFlutterInteractive', [false]);
+      });
+      jsCall('setFlutterInteractive', [false]);
     } catch (e) {
       debugPrint('Error registering JS callbacks: $e');
     }
@@ -180,7 +180,7 @@ class _HomeState extends State<Home> {
         locationLoaded = true;
       });
       // Update Windy map in the HTML background via JS
-      js.context.callMethod('updateWindyLocation', [currentLat, currentLng]);
+      jsCall('updateWindyLocation', [currentLat, currentLng]);
       _loadJsonData();
     } catch (e) {
       debugPrint('Location error: $e');
@@ -219,7 +219,7 @@ class _HomeState extends State<Home> {
   void _showLocationDetails(
       BuildContext context, Map<String, dynamic> locationDetails) async {
     try {
-      js.context.callMethod('setFlutterInteractive', [true]);
+      jsCall('setFlutterInteractive', [true]);
     } catch (_) {}
     try {
       final double startLatitude = currentLat;
@@ -358,7 +358,7 @@ class _HomeState extends State<Home> {
       );
     } finally {
       try {
-        js.context.callMethod('setFlutterInteractive', [false]);
+        jsCall('setFlutterInteractive', [false]);
       } catch (_) {}
     }
   }
@@ -537,7 +537,7 @@ class _HomeState extends State<Home> {
 
   void actionButtonClickFn() async {
     try {
-      js.context.callMethod('setFlutterInteractive', [true]);
+      jsCall('setFlutterInteractive', [true]);
     } catch (_) {}
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -692,7 +692,7 @@ class _HomeState extends State<Home> {
       );
     } finally {
       try {
-        js.context.callMethod('setFlutterInteractive', [false]);
+        jsCall('setFlutterInteractive', [false]);
       } catch (_) {}
     }
   }
@@ -728,7 +728,7 @@ class _HomeState extends State<Home> {
 
   void _showAssistanceDrawer() async {
     try {
-      js.context.callMethod('setFlutterInteractive', [true]);
+      jsCall('setFlutterInteractive', [true]);
     } catch (_) {}
     try {
       await showModalBottomSheet(
@@ -938,7 +938,7 @@ class _HomeState extends State<Home> {
       );
     } finally {
       try {
-        js.context.callMethod('setFlutterInteractive', [false]);
+        jsCall('setFlutterInteractive', [false]);
       } catch (_) {}
     }
   }
@@ -1109,8 +1109,7 @@ class _HomeState extends State<Home> {
         child: Icon(FontAwesomeIcons.streetView, color: Colors.black),
         backgroundColor: Colors.white,
         onPressed: () {
-          js.context
-              .callMethod('updateWindyLocation', [currentLat, currentLng]);
+          jsCall('updateWindyLocation', [currentLat, currentLng]);
           _loadJsonData();
         },
       ),

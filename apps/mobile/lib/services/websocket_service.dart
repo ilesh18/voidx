@@ -2,7 +2,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
-import '../core/constants.dart';
+import '../config/app_config.dart';
 import '../services/notification_service.dart';
 
 typedef SosAlertCallback = void Function(Map<String, dynamic> alert);
@@ -48,7 +48,7 @@ class WebSocketService {
 
   void _doConnect() {
     final uri = Uri.parse(
-      '${AppConstants.wsBase}${AppConstants.wsRescue}'
+      '${AppConfig.wsRescue}'
       '?user_id=${Uri.encodeComponent(_userId ?? "anon")}'
       '&role=${Uri.encodeComponent(_role ?? "USER")}'
       '&lat=$_lat&lng=$_lng',

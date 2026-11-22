@@ -403,11 +403,12 @@ class _SOSChatPanelState extends State<SOSChatPanel> {
 
     try {
       final ackRes = await http.post(
-        Uri.parse('${widget.backendUrl}/api/sos/$sosId/acknowledge'),
+        Uri.parse('${widget.backendUrl}/api/sos/$sosId/accept'),
         headers: {'Content-Type': 'application/json'},
         body: json.encode({
-          'team_id': 'NDRF-BN-04-A',
-          'team_name': 'NDRF 4th Battalion - Flood Rescue Unit Alpha',
+          'responder_id': 'NDRF-BN-04-A',
+          'responder_name': 'NDRF 4th Battalion - Flood Rescue Unit Alpha',
+          'responder_role': 'RESCUE_TEAM',
         }),
       );
 

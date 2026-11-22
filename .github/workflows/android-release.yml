@@ -1,0 +1,145 @@
+name: Android Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Release APK + AAB
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'microsoft'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Install Flutter dependencies
+        working-directory: apps/mobile
+        run: flutter pub get
+
+      - name: Run Flutter formatting check
+        working-directory: apps/mobile
+        run: flutter format --output=none --set-exit-if-changed .
+
+      - name: Run Flutter analysis
+        working-directory: apps/mobile
+        run: flutter analyze
+
+      - name: Run Flutter tests
+        working-directory: apps/mobile
+        run: flutter test
+
+      - name: Create production .env from secrets
+        if: ${{ secrets.BACKEND_URL != '' }}
+        working-directory: apps/mobile
+        run: |
+          cat > .env <<EOF
+          APP_ENV=production
+          BACKEND_URL=${{ secrets.BACKEND_URL }}
+          WEATHERAPI_API_KEY=${{ secrets.WEATHERAPI_API_KEY }}
+          GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
+          DTN_CLIENT_ID=${{ secrets.DTN_CLIENT_ID }}
+          DTN_CLIENT_SECRET=${{ secrets.DTN_CLIENT_SECRET }}
+          DTN_BASE_URL=${{ secrets.DTN_BASE_URL }}
+          DTN_AUTH_URL=${{ secrets.DTN_AUTH_URL }}
+          NOVU_API_KEY=${{ secrets.NOVU_API_KEY }}
+          TWILIO_ACCOUNT=${{ secrets.TWILIO_ACCOUNT }}
+          EOF
+
+      - name: Configure release signing keystore
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        working-directory: apps/mobile
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/cyclonex-release-key.jks
+          cat > android/app/key.properties <<EOF
+          storeFile=cyclonex-release-key.jks
+          storePassword=${{ secrets.ANDROID_STORE_PASSWORD }}
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          keyPassword=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF
+
+      - name: Build signed release APK
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        working-directory: apps/mobile
+        run: flutter build apk --release
+
+      - name: Build signed release AAB
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+        working-directory: apps/mobile
+        run: flutter build appbundle --release
+
+      - name: Build unsigned release APK (testing only)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' }}
+        working-directory: apps/mobile
+        run: flutter build apk --release
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: apps/mobile/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+
+      - name: Upload release AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: apps/mobile/build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: >
+      startsWith(github.ref, 'refs/tags/v') &&
+      secrets.ANDROID_KEYSTORE_BASE64 != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-release-apk
+          path: release-artifacts
+
+      - name: Download release AAB artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-release-aab
+          path: release-artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: CycloneX Android ${{ github.ref_name }}
+          files: |
+            release-artifacts/app-release.apk
+            release-artifacts/app-release.aab
+          draft: false
+          prerelease: false

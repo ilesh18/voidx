@@ -1,5 +1,6 @@
 // models/sos_request.dart
 import 'dart:convert';
+import 'package:flutter/material.dart';
 
 class SosRequest {
   final String sosId;

@@ -22,11 +22,33 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// Release signing configuration.
+// Keystore and passwords must NEVER be committed to Git.
+// Local development: provide android/key.properties (gitignored).
+// CI / GitHub Actions: set environment variables ANDROID_KEYSTORE_PATH,
+// ANDROID_STORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD.
+def keyPropsFile = rootProject.file('key.properties')
+def keyProps = new Properties()
+def keystorePath = System.env.ANDROID_KEYSTORE_PATH ?: ''
+def storePassword = System.env.ANDROID_STORE_PASSWORD ?: ''
+def keyAlias = System.env.ANDROID_KEY_ALIAS ?: ''
+def keyPassword = System.env.ANDROID_KEY_PASSWORD ?: ''
+
+if (keyPropsFile.exists()) {
+    keyPropsFile.withReader('UTF-8') { reader -> keyProps.load(reader) }
+    keystorePath = keyProps.getProperty('storeFile', keystorePath)
+    storePassword = keyProps.getProperty('storePassword', storePassword)
+    keyAlias = keyProps.getProperty('keyAlias', keyAlias)
+    keyPassword = keyProps.getProperty('keyPassword', keyPassword)
+}
+
+def isReleaseSigned = keystorePath != '' && new File(keystorePath).exists()
+
 apply from: project(':flutter_config').projectDir.getPath() + "/dotenv.gradle"
 
 android {
-    namespace "com.example.mobile"
-    compileSdkVersion flutter.compileSdkVersion
+    namespace "com.cyclonex.app"
+    compileSdkVersion 34
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -42,22 +64,43 @@ android {
         main.java.srcDirs += 'src/main/kotlin'
     }
 
+    // Force compileSdkVersion >= 31 on all library subprojects (e.g. flutter_config
+    // hardcodes compileSdkVersion 29) so platform attrs like android:attr/lStar
+    // resolve during release resource linking.
+    project.afterEvaluate {
+        subprojects.each { sub ->
+            if (sub.plugins.hasPlugin('com.android.library')) {
+                sub.android.compileSdkVersion = 34
+                sub.android.buildToolsVersion = '34.0.0'
+            }
+        }
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId "com.example.mobile"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
+        applicationId "com.cyclonex.app"
         minSdkVersion 23
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
     }
 
+    signingConfigs {
+        release {
+            if (isReleaseSigned) {
+                storeFile file(keystorePath)
+                storePassword storePassword
+                keyAlias keyAlias
+                keyPassword keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig signingConfigs.debug
+            signingConfig isReleaseSigned ? signingConfigs.release : signingConfigs.debug
+            minifyEnabled false
+            shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
 }
